@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment variables
+.env
+.env.local
+
+# Production builds
+dist/
+build/
+
+# Backend Data & Uploads (Ne pas envoyer les données privées sur GitHub)
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/data/*.json
+!backend/data/.gitkeep
+
+# System files
+.DS_Store
+Thumbs.db
+
+.qodo
