@@ -19,16 +19,19 @@ if (fs.existsSync(envPathBackend)) {
 }
 
 // --- NETTOYAGE GLOBAL DU MOT DE PASSE ---
-// On le fait une seule fois ici pour tout le serveur
-if (process.env.ADMIN_PASSWORD) {
-  // Enlève les espaces, les guillemets simples et doubles
-  process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD.toString()
-    .trim()
-    .replace(/^['"]|['"]$/g, "");
+try {
+  if (process.env.ADMIN_PASSWORD) {
+    process.env.ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD)
+      .trim()
+      .replace(/^['"]|['"]$/g, "");
+  }
+} catch (e) {
+  console.error("⚠️ Erreur lors du nettoyage du mot de passe:", e);
 }
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+// CHANGEMENT ICI : Port 5001 par défaut pour éviter conflit avec Kaizen (5000)
+const PORT = process.env.PORT || 5001;
 
 // Middleware
 app.use(cors());
@@ -39,8 +42,12 @@ app.use(express.urlencoded({ extended: true }));
 app.use((req, res, next) => {
   if (req.method === "POST" && req.url.includes("/login")) {
     console.log(`[DEBUG HTTP] Reçu POST sur ${req.url}`);
-    // Ne pas logger le body complet en prod pour sécurité, mais ici utile pour debug
-    console.log(`[DEBUG HTTP] Body reçu:`, req.body);
+    // Ne pas logger le body complet en prod pour sécurité
+    if (req.body && req.body.password) {
+      console.log(
+        `[DEBUG HTTP] Mot de passe reçu (longueur): ${req.body.password.length}`,
+      );
+    }
   }
   next();
 });
@@ -89,7 +96,6 @@ app.listen(PORT, () => {
   const currentPass = process.env.ADMIN_PASSWORD;
   console.log("------------------------------------------------");
   if (currentPass) {
-    // On affiche le mot de passe entre crochets pour voir s'il y a des espaces invisibles
     console.log(`🔑 MOT DE PASSE ACTIF (Nettoyé) : [${currentPass}]`);
   } else {
     console.error("❌ ERREUR : ADMIN_PASSWORD manquant ou vide dans .env");

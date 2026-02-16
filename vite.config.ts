@@ -6,15 +6,15 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      // Redirige toutes les requêtes commençant par /api vers le backend
+      // Redirige toutes les requêtes commençant par /api vers le backend (Port 5001)
       "/api": {
-        target: "http://localhost:5000",
+        target: "http://localhost:5001",
         changeOrigin: true,
         secure: false,
       },
       // Redirige aussi l'accès aux images uploadées
       "/uploads": {
-        target: "http://localhost:5000",
+        target: "http://localhost:5001",
         changeOrigin: true,
         secure: false,
       },
