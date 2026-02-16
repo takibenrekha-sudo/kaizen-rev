@@ -3,6 +3,7 @@ import {
   SendReceiptResponse,
   UserData,
   Registration,
+  RegistrationType,
 } from "../types";
 
 // Sur le VPS, si le front et le back sont sur le même domaine, on peut utiliser des chemins relatifs
@@ -14,6 +15,17 @@ const getAuthHeader = () => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
+// Helper pour éviter les crashs sur JSON.parse
+const safeJson = async (response: Response) => {
+  const text = await response.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch (e) {
+    console.error("Erreur parsing JSON:", text.substring(0, 100)); // Log le début de la réponse pour debug
+    throw new Error(`Réponse serveur invalide (${response.status})`);
+  }
+};
+
 export const checkUser = async (email: string): Promise<CheckUserResponse> => {
   try {
     const response = await fetch(`${API_URL}/check-user`, {
@@ -23,7 +35,7 @@ export const checkUser = async (email: string): Promise<CheckUserResponse> => {
     });
 
     if (!response.ok) throw new Error("Erreur réseau");
-    return await response.json();
+    return await safeJson(response);
   } catch (error) {
     console.error("API Error:", error);
     throw error;
@@ -33,11 +45,13 @@ export const checkUser = async (email: string): Promise<CheckUserResponse> => {
 export const sendReceipt = async (
   userData: UserData,
   file: File,
+  type: RegistrationType,
 ): Promise<SendReceiptResponse> => {
   const formData = new FormData();
-  formData.append("nom", userData.nom);
-  formData.append("prenom", userData.prenom);
+  if (userData.nom) formData.append("nom", userData.nom);
+  if (userData.prenom) formData.append("prenom", userData.prenom);
   formData.append("email", userData.email);
+  formData.append("type", type);
   formData.append("receipt", file);
 
   try {
@@ -47,34 +61,47 @@ export const sendReceipt = async (
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
+      const errorData = await safeJson(response);
       throw new Error(errorData.message || "Erreur lors de l'upload");
     }
 
-    return await response.json();
+    return await safeJson(response);
   } catch (error) {
     console.error("API Error:", error);
     throw error;
   }
 };
 
-export const loginAdmin = async (password: string): Promise<boolean> => {
+export const loginAdmin = async (
+  password: string,
+): Promise<{ success: boolean; message?: string }> => {
   try {
+    console.log("Tentative de connexion vers:", `${API_URL}/admin/login`);
     const response = await fetch(`${API_URL}/admin/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ password }),
     });
 
-    const data = await response.json();
-    if (data.success && data.token) {
+    // Utilisation de safeJson pour éviter le crash "Uncaught SyntaxError"
+    const data = await safeJson(response);
+
+    if (response.ok && data.success && data.token) {
       localStorage.setItem("adminToken", data.token);
-      return true;
+      return { success: true };
     }
-    return false;
+
+    return {
+      success: false,
+      message:
+        data.message || `Erreur ${response.status}: ${response.statusText}`,
+    };
   } catch (error) {
-    console.error("Login Error", error);
-    return false;
+    console.error("Login Error Catch:", error);
+    return {
+      success: false,
+      message: "Erreur de connexion (Backend inaccessible ?)",
+    };
   }
 };
 
@@ -91,15 +118,14 @@ export const getRegistrations = async (): Promise<Registration[]> => {
     }
 
     if (!response.ok) throw new Error("Erreur chargement données");
-    const data = await response.json();
+    const data = await safeJson(response);
+
+    if (!Array.isArray(data)) return [];
 
     // Pour les uploads locaux, on reconstruit l'URL si elle n'est pas absolue
     return data.map((r: any) => {
       let finalUrl = r.receiptUrl;
       if (r.receiptUrl && !r.receiptUrl.startsWith("http")) {
-        // Supposons que l'API est servie sous /api, les uploads sont sous /uploads à la racine du serveur Node
-        // Si on utilise Nginx reverse proxy sur /api -> localhost:5000,
-        // il faut aussi proxy pass /uploads -> localhost:5000/uploads
         finalUrl = `/uploads/${r.receiptUrl}`;
       }
       return {
@@ -122,6 +148,35 @@ export const validateRegistration = async (id: string): Promise<boolean> => {
     return response.ok;
   } catch (error) {
     console.error("API Error:", error);
+    return false;
+  }
+};
+
+export const getMeetLink = async (): Promise<string> => {
+  try {
+    const response = await fetch(`${API_URL}/settings`);
+    if (!response.ok) return "";
+    const data = await safeJson(response);
+    return data.meetLink || "";
+  } catch (error) {
+    console.error("API Error settings", error);
+    return "";
+  }
+};
+
+export const updateMeetLink = async (link: string): Promise<boolean> => {
+  try {
+    const response = await fetch(`${API_URL}/admin/settings`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeader(),
+      },
+      body: JSON.stringify({ meetLink: link }),
+    });
+    return response.ok;
+  } catch (error) {
+    console.error("API Error settings update", error);
     return false;
   }
 };

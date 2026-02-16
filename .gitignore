@@ -21,3 +21,5 @@ backend/data/*.json
 Thumbs.db
 
 .qodo
+.README.md 
+

@@ -10,7 +10,6 @@ const storage = multer.diskStorage({
     cb(null, "uploads/"); // Le dossier doit exister (créé dans server.js)
   },
   filename: function (req, file, cb) {
-    // Nettoyage du nom de fichier + Timestamp pour éviter les doublons
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
     const ext = path.extname(file.originalname);
     cb(null, file.fieldname + "-" + uniqueSuffix + ext);
@@ -39,7 +38,27 @@ const upload = multer({
 // Middleware Auth Admin
 const requireAuth = (req, res, next) => {
   const authHeader = req.headers.authorization;
-  const ADMIN_PASS = process.env.ADMIN_PASSWORD || "admin123";
+
+  // Récupération et nettoyage strict
+  let envPass = process.env.ADMIN_PASSWORD;
+  const ADMIN_PASS = envPass
+    ? envPass
+        .toString()
+        .trim()
+        .replace(/^['"]|['"]$/g, "")
+    : null;
+
+  if (!ADMIN_PASS) {
+    console.error(
+      "ERREUR DE SÉCURITÉ : Tentative d'accès admin sans mot de passe configuré dans le .env",
+    );
+    return res
+      .status(500)
+      .json({
+        message: "Erreur configuration serveur : Mot de passe non défini",
+      });
+  }
+
   const expectedToken = Buffer.from(`admin:${ADMIN_PASS}`).toString("base64");
 
   if (authHeader && authHeader === `Bearer ${expectedToken}`) {
@@ -49,16 +68,19 @@ const requireAuth = (req, res, next) => {
   }
 };
 
-// Routes
+// Routes publiques
 router.post("/check-user", controller.checkUser);
 router.post("/send-receipt", upload.single("receipt"), controller.sendReceipt);
-router.post("/admin/login", controller.adminLogin);
+router.get("/settings", controller.getSettings); // Récupérer le lien meet
 
+// Routes Admin
+router.post("/admin/login", controller.adminLogin);
 router.get("/admin/registrations", requireAuth, controller.getRegistrations);
 router.post(
   "/admin/validate/:id",
   requireAuth,
   controller.validateRegistration,
 );
+router.post("/admin/settings", requireAuth, controller.updateSettings); // Modifier le lien meet
 
 module.exports = router;

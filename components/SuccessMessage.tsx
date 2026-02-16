@@ -1,12 +1,32 @@
-import React from "react";
-import { CheckCircle, Calendar, Facebook, MapPin } from "lucide-react";
-import { SESSION_DATE, FACEBOOK_LINK, UserData } from "../types";
+import React, { useEffect, useState } from "react";
+import {
+  CheckCircle,
+  Calendar,
+  Video,
+  MapPin,
+  Loader2,
+  Clock,
+} from "lucide-react";
+import { SESSION_DATE, UserData } from "../types";
+import * as api from "../services/api";
 
 interface Props {
   userData: UserData;
 }
 
 const SuccessMessage: React.FC<Props> = ({ userData }) => {
+  const [meetLink, setMeetLink] = useState<string>("");
+  const [loadingLink, setLoadingLink] = useState(true);
+
+  useEffect(() => {
+    const fetchLink = async () => {
+      const link = await api.getMeetLink();
+      setMeetLink(link);
+      setLoadingLink(false);
+    };
+    fetchLink();
+  }, []);
+
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl shadow-emerald-500/10 dark:shadow-none p-10 max-w-lg w-full mx-auto border border-slate-100 dark:border-slate-800 text-center animate-in fade-in zoom-in duration-500 relative overflow-hidden">
       {/* Background Accent */}
@@ -23,11 +43,11 @@ const SuccessMessage: React.FC<Props> = ({ userData }) => {
         Inscription Validée
       </h2>
       <p className="text-slate-600 dark:text-slate-300 mb-8">
-        Bienvenue{" "}
+        L'accès pour{" "}
         <span className="font-semibold text-slate-900 dark:text-white">
-          {userData.prenom}
-        </span>
-        . Votre place est confirmée gratuitement.
+          {userData.email}
+        </span>{" "}
+        est confirmé.
       </p>
 
       <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-6 mb-8 text-left border border-slate-200 dark:border-slate-700">
@@ -41,10 +61,26 @@ const SuccessMessage: React.FC<Props> = ({ userData }) => {
             </div>
             <div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Date & Heure
+                Dates
               </p>
               <p className="text-slate-800 dark:text-slate-200 font-medium">
                 {SESSION_DATE}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-start">
+            <div className="bg-white dark:bg-slate-700 p-2 rounded-lg mr-3 shadow-sm text-primary-600 dark:text-primary-400">
+              <Clock className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Durée & Fréquence
+              </p>
+              <p className="text-slate-800 dark:text-slate-200 font-medium">
+                1h30 par jour
+              </p>
+              <p className="text-xs text-slate-500 mt-1">
+                Programme intensif sur 15 jours
               </p>
             </div>
           </div>
@@ -55,25 +91,47 @@ const SuccessMessage: React.FC<Props> = ({ userData }) => {
             <div>
               <p className="text-xs text-slate-500 dark:text-slate-400">Lieu</p>
               <p className="text-slate-800 dark:text-slate-200 font-medium">
-                Salle de conférence principale
+                Distanciel / En ligne
               </p>
-              <p className="text-xs text-slate-400 mt-1">
-                Lien Zoom envoyé par mail si distanciel
-              </p>
+              <p className="text-xs text-slate-400 mt-1">Via Google Meet</p>
             </div>
           </div>
         </div>
       </div>
 
-      <a
-        href={FACEBOOK_LINK}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center justify-center w-full px-5 py-3.5 text-sm font-bold text-white transition-all bg-[#1877F2] rounded-xl hover:bg-[#166fe5] hover:shadow-lg hover:shadow-[#1877F2]/30 focus:ring-4 focus:ring-[#1877F2]/50"
-      >
-        <Facebook className="w-5 h-5 mr-2" />
-        Rejoindre notre page Facebook
-      </a>
+      {loadingLink ? (
+        <div className="w-full py-4 flex justify-center">
+          <Loader2 className="animate-spin text-slate-400" />
+        </div>
+      ) : (
+        <a
+          href={meetLink || "#"}
+          target={meetLink ? "_blank" : "_self"}
+          rel="noopener noreferrer"
+          onClick={(e) => !meetLink && e.preventDefault()}
+          className={`group inline-flex items-center justify-center w-full px-5 py-3.5 text-sm font-bold text-white transition-all rounded-xl 
+            ${
+              meetLink
+                ? "bg-[#00796B] hover:bg-[#00695C] shadow-lg shadow-[#00796B]/30"
+                : "bg-slate-400 cursor-not-allowed opacity-75"
+            }`}
+        >
+          <div className="bg-white rounded p-0.5 mr-2">
+            <Video
+              className={`w-4 h-4 ${meetLink ? "text-[#00796B]" : "text-slate-400"}`}
+            />
+          </div>
+          {meetLink
+            ? "Rejoindre la réunion via Google Meet"
+            : "Lien de réunion bientôt disponible"}
+        </a>
+      )}
+
+      {meetLink && (
+        <p className="text-xs text-slate-400 mt-3">
+          Assurez-vous d'avoir un compte Google pour vous connecter.
+        </p>
+      )}
     </div>
   );
 };

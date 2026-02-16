@@ -5,21 +5,25 @@ const nodemailer = require("nodemailer");
 const DATA_DIR = path.join(__dirname, "../data");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 const REGISTRATIONS_FILE = path.join(DATA_DIR, "registrations.json");
+const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
 
 // --- HELPER FUNCTIONS ---
 const readJSON = (file) => {
   try {
-    if (!fs.existsSync(file))
-      return file.includes("users") ? { users: [] } : [];
+    let defaultData = [];
+    if (file.includes("users")) defaultData = { users: [] };
+    if (file.includes("settings")) defaultData = { meetLink: "" };
+
+    if (!fs.existsSync(file)) return defaultData;
     const data = fs.readFileSync(file, "utf8");
-    return data
-      ? JSON.parse(data)
-      : file.includes("users")
-        ? { users: [] }
-        : [];
+    return data ? JSON.parse(data) : defaultData;
   } catch (err) {
     console.error(`Error reading ${file}:`, err);
-    return file.includes("users") ? { users: [] } : [];
+    return file.includes("users")
+      ? { users: [] }
+      : file.includes("settings")
+        ? { meetLink: "" }
+        : [];
   }
 };
 
@@ -35,10 +39,23 @@ const writeJSON = (file, data) => {
 
 exports.adminLogin = (req, res) => {
   const { password } = req.body;
-  const ADMIN_PASS = process.env.ADMIN_PASSWORD || "admin123";
+  let envPassword = process.env.ADMIN_PASSWORD;
+  if (envPassword) {
+    envPassword = envPassword
+      .toString()
+      .trim()
+      .replace(/^['"]|['"]$/g, "");
+  }
+  const inputPassword = password ? password.toString().trim() : "";
 
-  if (password === ADMIN_PASS) {
-    const token = Buffer.from(`admin:${ADMIN_PASS}`).toString("base64");
+  if (!envPassword) {
+    return res
+      .status(500)
+      .json({ success: false, message: "Erreur config serveur" });
+  }
+
+  if (inputPassword === envPassword) {
+    const token = Buffer.from(`admin:${envPassword}`).toString("base64");
     return res.json({ success: true, token });
   } else {
     return res
@@ -47,38 +64,64 @@ exports.adminLogin = (req, res) => {
   }
 };
 
+exports.getSettings = (req, res) => {
+  const settings = readJSON(SETTINGS_FILE);
+  res.json(settings);
+};
+
+exports.updateSettings = (req, res) => {
+  const { meetLink } = req.body;
+  const settings = { meetLink: meetLink || "" };
+  writeJSON(SETTINGS_FILE, settings);
+  res.json({ success: true, settings });
+};
+
 exports.checkUser = (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: "Email requis" });
 
-  const usersData = readJSON(USERS_FILE);
-  const whitelistUsers = usersData.users || [];
+  const emailNormalized = email.toLowerCase().trim();
 
-  const existingUser = whitelistUsers.find(
-    (u) => u.email.toLowerCase().trim() === email.toLowerCase().trim(),
-  );
+  // 1. D'abord, on vérifie si l'utilisateur a une inscription en cours ou passée dans registrations.json
+  // C'est la source de vérité pour le statut "PENDING"
+  const registrations = readJSON(REGISTRATIONS_FILE);
 
-  if (existingUser) {
-    // Enregistrer automatiquement comme accès gratuit si pas encore fait
-    const registrations = readJSON(REGISTRATIONS_FILE);
-    const alreadyRegistered = registrations.find(
-      (r) => r.user.email.toLowerCase() === email.toLowerCase().trim(),
-    );
+  // On récupère la dernière inscription en date
+  const lastRegistration = registrations
+    .filter(
+      (r) =>
+        r.user &&
+        r.user.email &&
+        r.user.email.toLowerCase().trim() === emailNormalized,
+    )
+    .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
 
-    if (!alreadyRegistered) {
-      const newReg = {
-        id: Date.now().toString(),
-        user: existingUser,
-        date: new Date().toISOString(),
-        status: "FREE_ACCESS",
-      };
-      registrations.push(newReg);
-      writeJSON(REGISTRATIONS_FILE, registrations);
-    }
-
-    return res.json({ exists: true });
+  if (lastRegistration) {
+    // Si trouvé dans les inscriptions, on retourne ce statut (PENDING, VALIDATED, etc.)
+    return res.json({
+      exists: true,
+      status: lastRegistration.status,
+      userData: lastRegistration.user,
+    });
   }
 
+  // 2. Ensuite (Fallback), on vérifie la whitelist historique (users.json)
+  // Utile pour les utilisateurs ajoutés manuellement ou avant le système d'inscription
+  const usersData = readJSON(USERS_FILE);
+  const whitelistUsers = usersData.users || [];
+  const whitelistUser = whitelistUsers.find(
+    (u) => u.email.toLowerCase().trim() === emailNormalized,
+  );
+
+  if (whitelistUser) {
+    return res.json({
+      exists: true,
+      status: "VALIDATED", // Par défaut, s'il est dans la whitelist, il est validé
+      userData: whitelistUser,
+    });
+  }
+
+  // 3. Si introuvable nulle part
   return res.json({ exists: false });
 };
 
@@ -88,14 +131,19 @@ exports.sendReceipt = async (req, res) => {
       return res.status(400).json({ message: "Aucun fichier reçu" });
     }
 
-    const { nom, prenom, email } = req.body;
+    const { nom, prenom, email, type } = req.body;
 
     const newRegistration = {
       id: Date.now().toString(),
-      user: { nom, prenom, email },
+      user: {
+        nom: nom || "",
+        prenom: prenom || "",
+        email,
+      },
       date: new Date().toISOString(),
       status: "PENDING",
-      receiptUrl: req.file.filename, // On stocke juste le nom, le frontend ajoutera /uploads/
+      type: type || "CCP",
+      receiptUrl: req.file.filename,
     };
 
     const registrations = readJSON(REGISTRATIONS_FILE);
@@ -126,7 +174,7 @@ exports.validateRegistration = (req, res) => {
     registrations[index].status = "VALIDATED";
     writeJSON(REGISTRATIONS_FILE, registrations);
 
-    // Ajouter à la whitelist users.json
+    // On met aussi à jour la whitelist pour la redondance
     const usersData = readJSON(USERS_FILE);
     if (!usersData.users) usersData.users = [];
 
@@ -137,8 +185,8 @@ exports.validateRegistration = (req, res) => {
 
     if (!alreadyInWhitelist) {
       usersData.users.push({
-        nom: user.nom,
-        prenom: user.prenom,
+        nom: user.nom || "",
+        prenom: user.prenom || "",
         email: user.email,
       });
       writeJSON(USERS_FILE, usersData);
@@ -150,25 +198,30 @@ exports.validateRegistration = (req, res) => {
   }
 };
 
-// --- EMAIL HELPERS ---
-
 async function sendAdminNotification(registration, filePath) {
   if (!process.env.EMAIL_USER) return;
-
   try {
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
     });
 
+    const typeLabel =
+      registration.type === "KAIZEN"
+        ? "ABONNÉ KAIZEN"
+        : "PAIEMENT CCP (3000 DA)";
+    const userIdentity =
+      registration.user.nom || registration.user.prenom
+        ? `${registration.user.nom} ${registration.user.prenom}`
+        : registration.user.email;
+
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: process.env.RECEIVER_EMAIL,
-      subject: `Nouveau Reçu - ${registration.user.nom} ${registration.user.prenom}`,
-      text: `Utilisateur: ${registration.user.email}`,
+      subject: `Nouvelle Inscription [${typeLabel}] - ${userIdentity}`,
+      text: `Utilisateur: ${registration.user.email}\nType: ${typeLabel}\n${userIdentity !== registration.user.email ? "Nom: " + userIdentity : ""}`,
       attachments: [{ filename: registration.receiptUrl, path: filePath }],
     };
-
     await transporter.sendMail(mailOptions);
   } catch (e) {
     console.error("Email Error:", e);
