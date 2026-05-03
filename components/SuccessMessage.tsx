@@ -80,7 +80,7 @@ const SuccessMessage: React.FC<Props> = ({ userData }) => {
                 1h30 par jour
               </p>
               <p className="text-xs text-slate-500 mt-1">
-                Programme intensif sur 15 jours
+                Programme intensif sur 11 jours
               </p>
             </div>
           </div>

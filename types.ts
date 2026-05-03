@@ -40,4 +40,4 @@ export enum AppStep {
   ERROR = "ERROR",
 }
 
-export const SESSION_DATE = "Du 1er au 15 Mars 2025";
+export const SESSION_DATE = "Du 10 au 20 Mai 2026";

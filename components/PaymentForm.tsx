@@ -179,7 +179,7 @@ const PaymentForm: React.FC<Props> = ({
                       Ouvrez l'application <strong>Kaizen</strong>.
                     </li>
                     <li>
-                      Allez sur l'<strong>écran d'accueil</strong>.
+                      Allez sur les <strong>paramètres de compte</strong>.
                     </li>
                     <li>
                       Faites une <strong>capture d'écran</strong> visible.
