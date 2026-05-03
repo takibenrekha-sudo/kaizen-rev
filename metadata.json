@@ -1,0 +1,5 @@
+{
+  "name": "Revision Inscription System",
+  "description": "Système d'inscription pour des séances de révision avec gestion des utilisateurs existants et upload de reçus de paiement.",
+  "requestFramePermissions": []
+}
